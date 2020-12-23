@@ -57,7 +57,7 @@ class UsersController < ApplicationController
 
     # Sign in automatically if email verification is disabled or if user is already verified.
     if !Rails.configuration.enable_email_verification || @user.email_verified
-      @user.set_role :user
+      @user.set_role(initial_user_role(@user.email))
 
       login(@user) && return
     end
@@ -197,6 +197,29 @@ class UsersController < ApplicationController
     end
   end
 
+  # GET /shared_access_list
+  def shared_access_list
+    # Don't allow searchs unless atleast 3 characters are passed
+    return redirect_to '/404' if params[:search].length < 3
+
+    roles_can_appear = []
+    Role.where(provider: @user_domain).each do |role|
+      roles_can_appear << role.name if role.get_permission("can_appear_in_share_list") && role.priority >= 0
+    end
+
+    initial_list = User.select(:uid, :name)
+                       .where.not(uid: current_user.uid)
+                       .with_role(roles_can_appear)
+                       .shared_list_search(params[:search])
+
+    initial_list = initial_list.where(provider: @user_domain) if Rails.configuration.loadbalanced_configuration
+
+    # Respond with JSON object of users
+    respond_to do |format|
+      format.json { render body: initial_list.to_json }
+    end
+  end
+
   private
 
   def find_user
@@ -223,8 +246,8 @@ class UsersController < ApplicationController
 
   # Checks that the user is allowed to edit this user
   def check_admin_of
-    redirect_to current_user.main_room if current_user &&
-                                          @user != current_user &&
-                                          !current_user.admin_of?(@user, "can_manage_users")
+    redirect_to root_path if current_user &&
+                             @user != current_user &&
+                             !current_user.admin_of?(@user, "can_manage_users")
   end
 end
