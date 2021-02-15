@@ -137,7 +137,10 @@ class RoomsController < ApplicationController
     begin
       # Don't delete the users home room.
       raise I18n.t("room.delete.home_room") if @room == @room.owner.main_room
-      @room.destroy
+
+      # Destroy all recordings then permanently delete the room
+      delete_all_recordings(@room.bbb_id)
+      @room.destroy(true)
     rescue => e
       flash[:alert] = I18n.t("room.delete.fail", error: e)
     else
@@ -296,7 +299,7 @@ class RoomsController < ApplicationController
   def shared_users
     # Respond with JSON object of users that have access to the room
     respond_to do |format|
-      format.json { render body: @room.shared_users.to_json }
+      format.json { render body: @room.shared_users.pluck_to_hash(:uid, :name, :image).to_json }
     end
   end
 
